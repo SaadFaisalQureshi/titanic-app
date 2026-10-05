@@ -1,108 +1,126 @@
 """
-Titanic Passenger Survival Prediction - Student Demo App
-----------------------------------------------------------
-A small Streamlit web app that lets students interact with the trained
-Support Vector Classifier from the "1a - Titanic Survival - Recommended
-Update" notebook, without needing to install Python or run Jupyter.
+Heart Disease Prediction System - Streamlit Web App
+----------------------------------------------------
+Purpose of this file:
+This small web app lets anyone use the trained Support Vector Classifier
+(SVC) from 'Heart_Disease_Prediction.ipynb' through a browser form.
 
-It loads the same svc_trained_model.pkl produced by that notebook, and
-recreates the exact same LabelEncoders (fit on the same fixed category
-lists) used during training, so predictions match the notebook exactly.
+How it works:
+1. Loads the trained model 'heart_svc_trained_model.pkl' made by the notebook.
+2. Re-creates the same LabelEncoders used in training (same category lists),
+   so text inputs are converted to the same numeric codes.
+3. Collects the 4 inputs with dropdowns, encodes them, and shows the prediction.
 """
 
 import pickle
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import streamlit as st
 from sklearn.preprocessing import LabelEncoder
 
-st.set_page_config(page_title="Titanic Survival Predictor", page_icon="🚢", layout="centered")
+# Basic page settings (browser tab title, icon and layout)
+st.set_page_config(page_title="Heart Disease Predictor", page_icon="❤️", layout="centered")
 
 # ---------------------------------------------------------------------------
-# Load the trained model (same file the notebook produced)
+# Constants: model file path and the possible values of each input attribute
 # ---------------------------------------------------------------------------
 
-MODEL_PATH = Path(__file__).parent / "svc_trained_model.pkl"
+# The model file must be in the same folder as this app.py
+MODEL_PATH = Path(__file__).parent / "heart_svc_trained_model.pkl"
+
+# These lists MUST match the ones used in the notebook (Step 5.1)
+SEX = ["Male", "Female"]
+CHEST_PAIN = ["Typical Angina", "Atypical Angina", "Non-Anginal Pain", "Asymptomatic"]
+REST_ECG = ["Normal", "ST-T Abnormality", "LV Hypertrophy"]
+EXERCISE_ANGINA = ["Yes", "No"]
+
+
+# ---------------------------------------------------------------------------
+# Loading the model and encoders (cached so they load only once)
+# ---------------------------------------------------------------------------
 
 @st.cache_resource
 def load_model():
+    """Load the trained SVC model from the .pkl file."""
     with open(MODEL_PATH, "rb") as f:
         return pickle.load(f)
+
 
 @st.cache_resource
 def build_label_encoders():
     """
-    Recreates the exact same LabelEncoders used in the notebook.
-    LabelEncoder assigns codes based on the sorted order of the category
-    list, so fitting on the same fixed lists reproduces the same codes
-    deterministically - no need to pickle/ship the encoders separately.
+    Re-create the notebook's LabelEncoders.
+    A LabelEncoder's codes depend only on the sorted category list, so
+    fitting on the same lists gives exactly the same codes as in training.
     """
-    encoders = {}
-    encoders["PClass"] = LabelEncoder().fit(["First", "Second", "Third"])
-    encoders["Gender"] = LabelEncoder().fit(["Male", "Female"])
-    encoders["Sibling"] = LabelEncoder().fit(["Zero", "One", "Two", "Three"])
-    encoders["Embarked"] = LabelEncoder().fit(["Southampton", "Cherbourg", "Queenstown"])
-    return encoders
+    return {
+        "Sex": LabelEncoder().fit(SEX),
+        "ChestPain": LabelEncoder().fit(CHEST_PAIN),
+        "RestECG": LabelEncoder().fit(REST_ECG),
+        "ExerciseAngina": LabelEncoder().fit(EXERCISE_ANGINA),
+    }
+
 
 model = load_model()
 encoders = build_label_encoders()
 
 # ---------------------------------------------------------------------------
-# Page content
+# Page content: title, description and input form
 # ---------------------------------------------------------------------------
 
-st.title("🚢 Titanic Passenger Survival Predictor")
+st.title("❤️ Heart Disease Prediction System")
 st.markdown(
     """
-    This is a teaching demo built from the **Titanic Passenger Survival Prediction**
-    notebook. Pick a passenger's details below and the trained Support Vector
-    Classifier (SVC) will predict whether they would have survived.
+    Enter the four clinical attributes below and the trained Support Vector
+    Classifier (SVC) will predict whether heart disease is likely.
+    Trained on the UCI Heart Disease (Cleveland) dataset.
 
-    *Model accuracy on held-out test data: **80%** (100-row toy dataset).*
+    *Educational demo only. This is not medical advice or a diagnostic tool.*
     """
 )
-
 st.divider()
 
+# Two columns of dropdowns (Step 8.1: take input from the user)
 col1, col2 = st.columns(2)
 with col1:
-    pclass = st.selectbox("Passenger Class (PClass)", ["First", "Second", "Third"], index=2)
-    gender = st.selectbox("Gender", ["Male", "Female"])
+    sex = st.selectbox("Sex", SEX)
+    chest_pain = st.selectbox("Chest Pain Type", CHEST_PAIN, index=3)
 with col2:
-    sibling = st.selectbox("Siblings/Spouses Aboard", ["Zero", "One", "Two", "Three"])
-    embarked = st.selectbox("Port of Embarkation", ["Southampton", "Cherbourg", "Queenstown"])
+    rest_ecg = st.selectbox("Resting ECG Result", REST_ECG)
+    exercise_angina = st.selectbox("Exercise Induced Angina", ["No", "Yes"])
 
-if st.button("Predict Survival", type="primary", use_container_width=True):
+# ---------------------------------------------------------------------------
+# Prediction (runs only when the button is clicked)
+# ---------------------------------------------------------------------------
+
+if st.button("Predict", type="primary", use_container_width=True):
+
+    # Step 8.2: put the user's input into a one-row DataFrame
     user_input = pd.DataFrame({
-        "PClass": [pclass],
-        "Gender": [gender],
-        "Sibling": [sibling],
-        "Embarked": [embarked],
+        "Sex": [sex],
+        "ChestPain": [chest_pain],
+        "RestECG": [rest_ecg],
+        "ExerciseAngina": [exercise_angina],
     })
 
-    encoded = pd.DataFrame({
-        "PClass": encoders["PClass"].transform(user_input["PClass"]),
-        "Gender": encoders["Gender"].transform(user_input["Gender"]),
-        "Sibling": encoders["Sibling"].transform(user_input["Sibling"]),
-        "Embarked": encoders["Embarked"].transform(user_input["Embarked"]),
-    })
+    # Step 8.3: label encode each column with its own encoder
+    encoded = pd.DataFrame({col: encoders[col].transform(user_input[col])
+                            for col in user_input.columns})
 
+    # Step 8.5: predict (the model returns an array like [1], so take [0])
     prediction = model.predict(encoded)[0]
 
+    # Show the result: 1 = heart disease likely, 0 = not likely
     st.divider()
     if prediction == 1:
-        st.success("### ✅ SURVIVED")
+        st.error("### ⚠️ HEART DISEASE LIKELY")
     else:
-        st.error("### ❌ NOT SURVIVED")
+        st.success("### ✅ NO HEART DISEASE LIKELY")
 
+    # Optional: show the numbers actually sent to the model
     with st.expander("See the encoded feature vector sent to the model"):
         st.dataframe(encoded, hide_index=True)
 
 st.divider()
-st.caption(
-    "Built for teaching purposes from a 100-row simplified Titanic dataset. "
-    "Predictions reflect patterns in this small toy dataset, not a rigorous "
-    "historical analysis."
-)
+st.caption("Built for AIC354 Machine Learning Fundamentals, COMSATS University Islamabad, Lahore Campus.")
